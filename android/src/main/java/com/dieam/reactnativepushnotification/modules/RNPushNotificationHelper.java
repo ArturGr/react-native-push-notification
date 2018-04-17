@@ -4,6 +4,7 @@ package com.dieam.reactnativepushnotification.modules;
 import android.app.AlarmManager;
 import android.app.Application;
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -19,20 +20,24 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.support.v4.app.NotificationCompat;
+import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
 
 import com.facebook.react.bridge.ReadableMap;
 
 import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.Arrays;
+import java.util.Random;
 
 import static com.dieam.reactnativepushnotification.modules.RNPushNotification.LOG_TAG;
 import static com.dieam.reactnativepushnotification.modules.RNPushNotificationAttributes.fromJson;
 
 public class RNPushNotificationHelper {
     public static final String PREFERENCES_KEY = "rn_push_notification";
+    public  static  final String UNREAD_NOTIFICATIONS_KEY = "saved_unread_notification";
     private static final long DEFAULT_VIBRATION = 300L;
 
     private Context context;
@@ -128,7 +133,125 @@ public class RNPushNotificationHelper {
         }
     }
 
+
+    private static final String NOTIFICATION_CHANNEL_ID = "Full Circle";
+    private static boolean channelCreated = false;
+    private static void checkOrCreateChannel(NotificationManager manager) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O)
+            return;
+        if (channelCreated)
+            return;
+        if (manager == null)
+            return;
+
+        final CharSequence name = "Full Circle";
+        int importance = NotificationManager.IMPORTANCE_DEFAULT;
+        NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance);
+        channel.enableLights(true);
+        channel.enableVibration(true);
+
+        manager.createNotificationChannel(channel);
+        channelCreated = true;
+    }
+
+
+
     public void sendToNotificationCentre(Bundle bundle) {
+        Class intentClass = getMainActivityClass();
+        if (intentClass == null) {
+            Log.e(LOG_TAG, "No activity class found for the notification");
+            return;
+        }
+
+        String savedNotification =scheduledNotificationsPersistence.getString(UNREAD_NOTIFICATIONS_KEY, "");
+        JSONArray notifications = new JSONArray();
+        try{
+            notifications = new JSONArray(savedNotification);
+        }catch (JSONException e){
+            //
+        }
+
+
+        NotificationCompat.InboxStyle inboxStyle = new NotificationCompat.InboxStyle();
+
+
+        int SUMMARY_ID = 0;
+        String GROUP_KEY_FC_MESSAGE = "FC_MESSAGE_";
+        int smallIconResId;
+
+        String smallIcon = bundle.getString("smallIcon");
+        String packageName = context.getPackageName();
+        Resources res = context.getResources();
+        if (smallIcon != null) {
+            smallIconResId = res.getIdentifier(smallIcon, "mipmap", packageName);
+        } else {
+            smallIconResId = res.getIdentifier("ic_notification", "mipmap", packageName);
+        }
+
+        if (smallIconResId == 0) {
+            smallIconResId = res.getIdentifier("ic_launcher", "mipmap", packageName);
+
+            if (smallIconResId == 0) {
+                smallIconResId = android.R.drawable.ic_dialog_info;
+            }
+        }
+
+
+
+        NotificationManager notificationManager = notificationManager();
+        checkOrCreateChannel(notificationManager);
+        Random randomNumberGenerator = new Random(System.currentTimeMillis());
+
+
+
+        Notification newMessageNotification1 =
+                new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+                        .setContentTitle("Full Circle")
+                        .setSmallIcon(smallIconResId)
+                        .setContentText(bundle.getString("message"))
+                        .setGroup(GROUP_KEY_FC_MESSAGE)
+                        .build();
+
+
+        int notificationID = randomNumberGenerator.nextInt();
+        Intent intent = new Intent(context, intentClass);
+        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        bundle.putBoolean("userInteraction", true);
+        intent.putExtra("notification", bundle);
+        PendingIntent pendingIntent = PendingIntent.getActivity(context, notificationID, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
+
+        Notification summaryNotification =
+                new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+                        .setContentTitle("Full Circle")
+                        //set content text to support devices running API level < 24
+                        .setContentText(notifications.length() > 0 ?(notifications.length() + 1) + " new messages": bundle.getString("message"))
+                        .setSmallIcon(smallIconResId)
+                        .setContentIntent(pendingIntent)
+                        //build summary info into InboxStyle template
+                        .setStyle(inboxStyle
+                                .addLine(bundle.getString("message")))
+                        //specify which group this notification belongs to
+                        .setGroup(GROUP_KEY_FC_MESSAGE)
+                        //set this notification as the summary for the group
+                        .setGroupSummary(true)
+                        .build();
+
+
+
+        notificationManager.notify(notificationID, newMessageNotification1);
+        //notificationManager.notify(2, newMessageNotification2);
+        notificationManager.notify(SUMMARY_ID, summaryNotification);
+
+
+
+
+
+        notifications.put(bundle.getString("message"));
+        scheduledNotificationsPersistence.edit().putString(UNREAD_NOTIFICATIONS_KEY, notifications.toString()).apply();
+
+
+        /*
         try {
             Class intentClass = getMainActivityClass();
             if (intentClass == null) {
@@ -154,10 +277,10 @@ public class RNPushNotificationHelper {
             String title = bundle.getString("title");
             if (title == null) {
                 ApplicationInfo appInfo = context.getApplicationInfo();
-                title = context.getPackageManager().getApplicationLabel(appInfo).toString();
+                //title = context.getPackageManager().getApplicationLabel(appInfo).toString();
             }
 
-            NotificationCompat.Builder notification = new NotificationCompat.Builder(context)
+            NotificationCompat.Builder notification = new  NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
                     .setContentTitle(title)
                     .setTicker(bundle.getString("ticker"))
                     .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
@@ -166,7 +289,11 @@ public class RNPushNotificationHelper {
 
             String group = bundle.getString("group");
             if (group != null) {
+                Log.e("Grou", "Adding a GROUP!!!!");
+                //inboxStyle.setBigContentTitle(title);
+                //inboxStyle.addLine(bundle.getString("message"));
                 notification.setGroup(group);
+                //notification.setStyle(inboxStyle);
             }
 
             notification.setContentText(bundle.getString("message"));
@@ -272,6 +399,15 @@ public class RNPushNotificationHelper {
                     PendingIntent.FLAG_UPDATE_CURRENT);
 
             NotificationManager notificationManager = notificationManager();
+            checkOrCreateChannel(notificationManager);
+            /*if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+
+       // Create or update.
+                NotificationChannel channel = new NotificationChannel("fc_channel_01",
+                        "Channel Full Circle",
+                        NotificationManager.IMPORTANCE_DEFAULT);
+                notificationManager.createNotificationChannel(channel);
+            }
 
             notification.setContentIntent(pendingIntent);
 
@@ -346,6 +482,7 @@ public class RNPushNotificationHelper {
         } catch (Exception e) {
             Log.e(LOG_TAG, "failed to send push notification", e);
         }
+    */
     }
 
     private void scheduleNextNotificationIfRepeating(Bundle bundle) {
