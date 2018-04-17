@@ -7,7 +7,10 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 
 import com.dieam.reactnativepushnotification.helpers.ApplicationBadgeHelper;
 import com.facebook.react.bridge.ActivityEventListener;
@@ -31,10 +34,11 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
     private RNPushNotificationHelper mRNPushNotificationHelper;
     private final Random mRandomNumberGenerator = new Random(System.currentTimeMillis());
     private RNPushNotificationJsDelivery mJsDelivery;
+    private Context context;
 
     public RNPushNotification(ReactApplicationContext reactContext) {
         super(reactContext);
-
+        context = reactContext;
         reactContext.addActivityEventListener(this);
 
         Application applicationContext = (Application) reactContext.getApplicationContext();
@@ -83,6 +87,7 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
     }
 
     private void registerNotificationsReceiveNotificationActions(ReadableArray actions) {
+        Log.d("MyApp","I am here Notification");
         IntentFilter intentFilter = new IntentFilter();
         // Add filter for each actions.
         for (int i = 0; i < actions.size(); i++) {
@@ -177,6 +182,8 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
      * @see <a href="https://facebook.github.io/react-native/docs/pushnotificationios.html">RN docs</a>
      */
     public void cancelAllLocalNotifications() {
+        SharedPreferences scheduledNotificationsPersistence = context.getSharedPreferences(RNPushNotificationHelper.PREFERENCES_KEY, Context.MODE_PRIVATE);
+        scheduledNotificationsPersistence.edit().remove(RNPushNotificationHelper.UNREAD_NOTIFICATIONS_KEY).apply();
         mRNPushNotificationHelper.cancelAllScheduledNotifications();
         mRNPushNotificationHelper.clearNotifications();
     }
