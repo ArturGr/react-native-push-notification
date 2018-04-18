@@ -29,8 +29,11 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 import static com.dieam.reactnativepushnotification.modules.RNPushNotification.LOG_TAG;
 import static com.dieam.reactnativepushnotification.modules.RNPushNotificationAttributes.fromJson;
@@ -203,23 +206,47 @@ public class RNPushNotificationHelper {
         Random randomNumberGenerator = new Random(System.currentTimeMillis());
 
 
+        int notificationID = randomNumberGenerator.nextInt();
+
+
+
+
+        List<String> chats = new ArrayList<>();
+        for(int i = 0; i< notifications.length(); i++){
+            String chat = "";
+            try{
+                JSONObject notificationObject = notifications.getJSONObject(i);
+                chat = notificationObject.getString("chat_id");
+            }catch (JSONException e){
+                //
+            }
+            if(chat.length() > 0 &&  !chats.contains(chat)){
+                chats.add(chat);
+            }
+        }
+        int chatsCount = chats.size();
+        String thisChatId = bundle.getString("message");
+        if(thisChatId != null &&  !chats.contains(thisChatId)){
+            chatsCount++;
+        }
+
+
+        Intent intent = new Intent(context, intentClass);
+        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        bundle.putBoolean("userInteraction", true);
+        bundle.putInt("chats", chatsCount);
+        intent.putExtra("notification", bundle);
+        PendingIntent pendingIntent = PendingIntent.getActivity(context, notificationID, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT);
 
         Notification newMessageNotification1 =
                 new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
                         .setContentTitle("Full Circle")
                         .setSmallIcon(smallIconResId)
+                        .setContentIntent(pendingIntent)
                         .setContentText(bundle.getString("message"))
                         .setGroup(GROUP_KEY_FC_MESSAGE)
                         .build();
-
-
-        int notificationID = randomNumberGenerator.nextInt();
-        Intent intent = new Intent(context, intentClass);
-        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        bundle.putBoolean("userInteraction", true);
-        intent.putExtra("notification", bundle);
-        PendingIntent pendingIntent = PendingIntent.getActivity(context, notificationID, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT);
 
         Notification summaryNotification =
                 new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
@@ -246,8 +273,9 @@ public class RNPushNotificationHelper {
 
 
 
+        RNPushNotificationAttributes notificationAttributes = new RNPushNotificationAttributes(bundle);
 
-        notifications.put(bundle.getString("message"));
+        notifications.put(notificationAttributes.toJson());
         scheduledNotificationsPersistence.edit().putString(UNREAD_NOTIFICATIONS_KEY, notifications.toString()).apply();
 
 
